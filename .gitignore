@@ -1,0 +1,5 @@
+.DS_Store
+FanDial.app/
+fanctl
+*.o
+*.dSYM/
