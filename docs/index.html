@@ -1,0 +1,1045 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FanDial</title>
+<meta name="description" content="FanDial is a free menu bar app for Apple Silicon Macs. Drag a rotary dial to set your fan speed, tap the center to hand control back to macOS.">
+<meta property="og:title" content="FanDial">
+<meta property="og:description" content="Set your Mac's fan speed with one turn of a dial. Free, MIT licensed, built for Apple Silicon.">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20256%20256%22%3E%3Crect%20width%3D%22256%22%20height%3D%22256%22%20rx%3D%2256%22%20fill%3D%22%23181818%22/%3E%3Cg%20transform%3D%22translate%2840%2040%29%20scale%280.6875%29%22%3E%3Cpath%20fill%3D%22%2333D66B%22%20d%3D%22M233%2C135a60%2C60%2C0%2C0%2C0-89.62-35.45l16.39-65.44a8%2C8%2C0%2C0%2C0-3.45-8.68A60%2C60%2C0%2C1%2C0%2C95.69%2C128.91L30.82%2C147.44a8%2C8%2C0%2C0%2C0-5.8%2C7.32%2C60%2C60%2C0%2C0%2C0%2C44.42%2C60.66%2C60.52%2C60.52%2C0%2C0%2C0%2C15.62%2C2.07%2C60.07%2C60.07%2C0%2C0%2C0%2C59.88-62l48.48%2C46.92a8%2C8%2C0%2C0%2C0%2C9.25%2C1.35A60%2C60%2C0%2C0%2C0%2C233%2C135ZM130.44%2C147.85a20%2C20%2C0%2C1%2C1%2C17.41-22.29A20%2C20%2C0%2C0%2C1%2C130.44%2C147.85Z%22/%3E%3C/g%3E%3C/svg%3E">
+<link rel="canonical" href="https://whybepb.site/fan-dial/">
+<meta property="og:url" content="https://whybepb.site/fan-dial/">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: classic hero plus sections (type A). Copy left, a working replica of the
+   FanDial popover right. Every value below comes from the landing-page-design skill:
+   Tailwind type steps, the 13 spacing tokens, Tailwind radii, the approved dark grounds,
+   and one easing curve. Single dark world by choice: the app itself is dark only. */
+:root {
+  color-scheme: dark;
+  /* grounds (B4 list only) */
+  --bg: #000000;
+  --surface: #181818;
+  --raised: #1F1F1F;
+  --chip: #272727;
+  --line: #313131;
+  /* text */
+  --fg: #EDEDED;
+  --muted: #9B9B9B;
+  --dim: #6E6E6E;
+  /* the dial's own tick ramp, lifted from DialView.swift */
+  --cool: #33D66B;
+  --warm: #FFB82E;
+  --hot: #FF544D;
+  --tick-off: #454545;
+
+  --font: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* spacing tokens (B2) */
+  --s25: 2px; --s50: 4px; --s75: 8px; --s100: 12px; --s200: 16px; --s300: 24px;
+  --s400: 32px; --s500: 40px; --s600: 48px; --s700: 64px; --s800: 80px; --s900: 96px;
+
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur: 700ms;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: var(--s900); }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 16px; line-height: 24px;
+  -webkit-font-smoothing: antialiased;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+h1, h2, h3 { text-wrap: balance; margin: 0; font-weight: 600; }
+p, li, dd { text-wrap: pretty; }
+p { margin: 0; }
+a { color: inherit; }
+code, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+svg.i { width: 1em; height: 1em; flex: none; fill: currentColor; }
+:focus-visible { outline: 2px solid var(--cool); outline-offset: 2px; border-radius: 8px; }
+.wrap { max-width: 1120px; margin-inline: auto; }
+
+.skip {
+  position: fixed; left: max(16px, env(safe-area-inset-left, 0px)); top: calc(var(--s200) + env(safe-area-inset-top, 0px));
+  z-index: 60; padding: var(--s75) var(--s100); border-radius: 9999px;
+  background: var(--fg); color: var(--bg); font-size: 14px; line-height: 20px; font-weight: 600;
+  text-decoration: none; transform: translateY(-160%);
+  transition: transform var(--dur) var(--ease);
+}
+.skip:focus { transform: none; }
+
+/* ---------- buttons ---------- */
+.btn {
+  display: inline-flex; align-items: center; gap: var(--s75);
+  padding: var(--s75) var(--s100);
+  border-radius: 9999px; border: 1px solid transparent;
+  font: 600 16px/24px var(--font); text-decoration: none; cursor: pointer;
+  transition: background-color var(--dur) var(--ease), transform var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.btn:hover { transform: translateY(-1px); }
+.btn:active { transform: scale(0.98); }
+.btn-primary { background: var(--fg); color: var(--bg); }
+.btn-primary:hover { background: #FFFFFF; }
+.btn-small { font-size: 14px; line-height: 20px; }
+.btn-ghost { background: var(--chip); color: var(--fg); border-color: var(--line); }
+.btn-ghost:hover { background: var(--line); }
+
+/* ---------- fluid island nav (B7) ---------- */
+.nav {
+  position: fixed; z-index: 50; left: 0; right: 0;
+  top: env(safe-area-inset-top, 0px);
+  display: flex; justify-content: center;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  pointer-events: none;
+}
+.pill {
+  pointer-events: auto;
+  margin-top: var(--s300);
+  width: max-content; max-width: 100%;
+  display: flex; align-items: center; gap: var(--s200);
+  padding: var(--s75) var(--s75) var(--s75) var(--s200);
+  border-radius: 9999px;
+  background: rgba(24, 24, 24, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(24px) saturate(1.4); -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  position: relative; z-index: 2;
+}
+.brand { display: inline-flex; align-items: center; gap: var(--s75); font-weight: 600; text-decoration: none; }
+.brand .i { color: var(--cool); font-size: 20px; }
+.links { display: flex; gap: var(--s50); list-style: none; margin: 0; padding: 0; }
+.links a {
+  display: block; padding: var(--s50) var(--s100); border-radius: 9999px;
+  font-size: 14px; line-height: 20px; color: var(--muted); text-decoration: none;
+  transition: color var(--dur) var(--ease), background-color var(--dur) var(--ease);
+}
+.links a:hover { color: var(--fg); }
+.links a[aria-current="true"] { color: var(--fg); background: rgba(255, 255, 255, 0.08); }
+
+.burger {
+  display: none; position: relative; width: 40px; height: 40px; border-radius: 9999px;
+  border: 0; background: var(--chip); cursor: pointer; color: var(--fg);
+  transition: background-color var(--dur) var(--ease);
+}
+.burger span {
+  position: absolute; left: 12px; right: 12px; height: 2px; border-radius: 2px; background: currentColor;
+  transition: transform var(--dur) var(--ease), top var(--dur) var(--ease);
+}
+.burger span:nth-child(1) { top: 15px; }
+.burger span:nth-child(2) { top: 23px; }
+.menu-open .burger span:nth-child(1) { top: 19px; transform: rotate(45deg); }
+.menu-open .burger span:nth-child(2) { top: 19px; transform: rotate(-45deg); }
+
+.sheet {
+  position: fixed; inset: 0; z-index: 1;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(64px); -webkit-backdrop-filter: blur(64px);
+  display: flex; flex-direction: column; justify-content: center; gap: var(--s200);
+  padding: var(--s900) max(24px, env(safe-area-inset-right, 0px)) var(--s700) max(24px, env(safe-area-inset-left, 0px));
+  opacity: 0; visibility: hidden; pointer-events: auto;
+  transition: opacity var(--dur) var(--ease), visibility 0s linear var(--dur);
+}
+.menu-open .sheet { opacity: 1; visibility: visible; transition: opacity var(--dur) var(--ease); }
+.sheet a {
+  font-size: 36px; line-height: 40px; font-weight: 600; text-decoration: none;
+  transform: translateY(48px); opacity: 0;
+  transition: transform var(--dur) var(--ease), opacity var(--dur) var(--ease);
+}
+.menu-open .sheet a { transform: none; opacity: 1; }
+.sheet a:nth-child(1) { transition-delay: 100ms; }
+.sheet a:nth-child(2) { transition-delay: 150ms; }
+.sheet a:nth-child(3) { transition-delay: 200ms; }
+.sheet a:nth-child(4) { transition-delay: 250ms; }
+.sheet .btn { align-self: flex-start; margin-top: var(--s300); font-size: 16px; line-height: 24px; }
+.sheet .btn:nth-child(5) { transition-delay: 300ms; }
+
+@media (max-width: 767px) {
+  .links, .pill > .btn { display: none; }
+  .burger { display: block; }
+}
+
+/* ---------- scroll interpolation (B7) ---------- */
+:where(.js [data-reveal]) {
+  transition: opacity 900ms var(--ease), transform 900ms var(--ease), filter 900ms var(--ease);
+}
+.card, details {
+  transition: opacity 900ms var(--ease), transform 900ms var(--ease), filter 900ms var(--ease),
+    background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.js [data-reveal]:not(.in) { opacity: 0; transform: translateY(64px); filter: blur(12px); }
+
+/* ---------- hero ---------- */
+.hero {
+  padding-top: calc(var(--s900) + var(--s700)); padding-bottom: var(--s900);
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s700); align-items: center;
+}
+.hero-copy { min-width: 0; display: grid; gap: var(--s300); }
+.hero h1 {
+  max-width: 680px;
+  font-size: 60px; line-height: 1; letter-spacing: -0.03em; font-weight: 600;
+  background: linear-gradient(90deg, #FFFFFF, #9B9B9B);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  padding-bottom: var(--s50);
+}
+.hero .sub { max-width: 680px; font-size: 20px; line-height: 28px; color: var(--muted); }
+.cta-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s200); padding-top: var(--s75); }
+.cta-note { font-size: 14px; line-height: 20px; color: var(--dim); }
+.proof {
+  display: flex; align-items: center; gap: var(--s100);
+  font-size: 14px; line-height: 20px; color: var(--muted);
+  padding-top: var(--s200);
+}
+.proof b { color: var(--fg); font-weight: 500; font-family: var(--mono); }
+.proof .dot { width: 8px; height: 8px; border-radius: 9999px; background: var(--cool); flex: none; }
+
+/* ---------- popover replica ---------- */
+.demo { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s100); justify-items: center; min-width: 0; }
+.menubar {
+  width: 360px; max-width: 100%;
+  display: flex; justify-content: flex-end; align-items: center; gap: var(--s200);
+  padding: var(--s50) var(--s200);
+  border-radius: 12px; background: var(--surface);
+  font-size: 12px; line-height: 16px; color: var(--muted);
+}
+.menubar .fanmark { font-size: 16px; color: var(--fg); display: inline-flex; }
+.menubar .fanmark .fill { display: none; }
+.manual .menubar .fanmark .fill { display: block; }
+.manual .menubar .fanmark .line { display: none; }
+.popover {
+  width: 360px; max-width: 100%;
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s200); justify-items: center;
+  padding: var(--s300);
+  border-radius: 24px; background: var(--surface);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.6);
+}
+.dial {
+  position: relative; width: 304px; max-width: 100%; aspect-ratio: 1;
+  touch-action: none; cursor: grab; border-radius: 9999px;
+  user-select: none; -webkit-user-select: none;
+}
+.dial.dragging { cursor: grabbing; }
+.dial > svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.dial .tick { transition: fill 150ms var(--ease), opacity 150ms var(--ease); }
+.dial .marker { transition: fill 150ms var(--ease); }
+.center {
+  position: absolute; left: 50%; top: 50%; width: 44.6%; aspect-ratio: 1; translate: -50% -50%;
+  border-radius: 9999px; border: 0; background: transparent; color: var(--fg); cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s25);
+  font-family: var(--font);
+  transition: background-color var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+.center:hover { background: rgba(255, 255, 255, 0.03); }
+.center:active { transform: scale(0.98); }
+.center .i { font-size: 16px; color: #8C8C8C; transition: color var(--dur) var(--ease); }
+.manual .center .i { color: var(--cool); }
+.rpm { font: 600 36px/40px var(--mono); letter-spacing: -0.02em; }
+.cap { font: 600 12px/16px var(--font); letter-spacing: 0.14em; color: #8C8C8C; text-transform: uppercase; white-space: nowrap; }
+
+.readout {
+  width: 100%; display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--s75) var(--s200);
+  font-size: 12px; line-height: 16px; color: var(--dim);
+}
+.readout span { display: inline-flex; gap: var(--s50); }
+.readout b { font: 500 12px/16px var(--mono); color: #BFBFBF; }
+.readout b.hot { color: #FF736B; }
+.controls { width: 100%; display: flex; align-items: center; gap: var(--s75); }
+.chip {
+  padding: var(--s50) var(--s100); border-radius: 9999px; border: 0; cursor: pointer;
+  background: rgba(255, 255, 255, 0.07); color: #B3B3B3;
+  font: 600 14px/20px var(--font);
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+.chip:hover { background: rgba(255, 255, 255, 0.12); }
+.chip:active { transform: scale(0.98); }
+.chip[aria-pressed="true"].auto { background: rgba(51, 214, 107, 0.18); color: var(--cool); }
+.chip.max:hover { color: var(--hot); }
+.spacer { flex: 1; }
+.login {
+  display: inline-flex; align-items: center; gap: var(--s50);
+  border: 0; background: none; cursor: pointer; padding: var(--s50);
+  font: 400 12px/16px var(--font); color: var(--dim);
+}
+.login .led { width: 6px; height: 6px; border-radius: 9999px; background: var(--tick-off); transition: background-color var(--dur) var(--ease); }
+.login[aria-pressed="true"] .led { background: var(--cool); }
+.demo-note { font-size: 12px; line-height: 16px; color: var(--dim); text-align: center; max-width: 360px; }
+
+/* ---------- sections ---------- */
+section { padding-block: var(--s900); }
+.eyebrow {
+  font: 600 12px/16px var(--font); letter-spacing: 0.12em; text-transform: uppercase; color: var(--cool);
+  margin-bottom: var(--s200);
+}
+.h2 { font-size: 48px; line-height: 1; letter-spacing: -0.025em; max-width: 680px; }
+.lede { max-width: 640px; font-size: 18px; line-height: 28px; color: var(--muted); margin-top: var(--s300); }
+.head { margin-bottom: var(--s700); }
+
+.versus { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s200); }
+.panel {
+  padding: var(--s400); border-radius: 24px; background: var(--surface);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  display: grid; gap: var(--s300); align-content: start; min-width: 0;
+}
+.panel h3 { font-size: 20px; line-height: 28px; }
+.panel p { color: var(--muted); }
+.curve { width: 100%; height: auto; display: block; border-radius: 8px; background: var(--raised); }
+.curve text { font: 500 10px var(--mono); fill: var(--dim); }
+
+/* tagline reveal (B11) */
+.tagline { padding-block: var(--s900); }
+.tagline p {
+  max-width: 680px; font-size: 60px; line-height: 1; letter-spacing: -0.03em; font-weight: 600;
+  text-wrap: balance;
+}
+.tagline .w { color: rgba(237, 237, 237, 0.28); transition: color var(--dur) var(--ease); }
+.tagline .w.on { color: var(--fg); }
+.tagline .w.on.accent { color: var(--cool); }
+
+/* benefits */
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s200); }
+.card {
+  padding: var(--s300); border-radius: 16px; background: var(--surface);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  display: grid; gap: var(--s100); align-content: start; min-width: 0;
+  transition: background-color var(--dur) var(--ease), transform var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.card:hover { background: var(--raised); border-color: rgba(255, 255, 255, 0.1); }
+.card .ico {
+  width: 40px; height: 40px; border-radius: 8px; background: var(--chip);
+  display: grid; place-items: center; font-size: 20px; color: var(--cool); margin-bottom: var(--s100);
+}
+.card h3 { font-size: 18px; line-height: 28px; }
+.card p { color: var(--muted); font-size: 14px; line-height: 20px; }
+.card code { font-size: 12px; line-height: 16px; color: var(--fg); }
+.term {
+  margin-top: var(--s75); padding: var(--s100); border-radius: 8px; background: var(--bg);
+  font: 400 12px/16px var(--mono); color: var(--muted); overflow-x: auto; white-space: pre;
+}
+.term .p { color: var(--cool); }
+
+/* steps */
+.steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s200); list-style: none; padding: 0; margin: 0; counter-reset: step; }
+.step {
+  padding: var(--s300); border-radius: 16px; border: 1px solid var(--line);
+  display: grid; gap: var(--s100); align-content: start; min-width: 0;
+}
+.step .n {
+  width: 32px; height: 32px; border-radius: 9999px; background: var(--chip);
+  display: grid; place-items: center; font: 600 14px/20px var(--mono); color: var(--fg); margin-bottom: var(--s100);
+}
+.step h3 { font-size: 18px; line-height: 28px; }
+.step p { color: var(--muted); font-size: 14px; line-height: 20px; }
+.cmd {
+  margin-top: var(--s100);
+  display: flex; align-items: center; gap: var(--s75);
+  padding: var(--s75); padding-left: var(--s100); border-radius: 12px; background: var(--surface);
+  border: 1px solid rgba(255, 255, 255, 0.06); min-width: 0;
+}
+.cmd code { flex: 1; min-width: 0; font-size: 12px; line-height: 16px; color: var(--fg); white-space: pre; overflow-x: auto; }
+.copy {
+  flex: none; width: 32px; height: 32px; border-radius: 4px; border: 0; cursor: pointer;
+  display: grid; place-items: center; background: var(--chip); color: var(--muted); font-size: 16px;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+.copy:hover { background: var(--line); color: var(--fg); }
+.copy:active { transform: scale(0.98); }
+.copy .ok { display: none; }
+.copy.done .ok { display: block; color: var(--cool); }
+.copy.done .cp { display: none; }
+.copy-err { font-size: 12px; line-height: 16px; color: var(--warm); min-height: 16px; }
+
+/* numbers */
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s200); }
+.stat {
+  padding: var(--s300); border-radius: 16px; background: var(--surface);
+  border: 1px solid rgba(255, 255, 255, 0.06); display: grid; gap: var(--s75); min-width: 0;
+}
+.stat .v { font: 600 36px/40px var(--mono); letter-spacing: -0.02em; }
+.stat .v small { font-size: 18px; line-height: 28px; color: var(--muted); font-weight: 500; }
+.stat .k { font-size: 14px; line-height: 20px; color: var(--muted); }
+.stat .bar { height: 4px; border-radius: 9999px; background: var(--chip); overflow: hidden; margin-top: var(--s75); }
+.stat .bar span { display: block; height: 100%; border-radius: 9999px; background: var(--cool); }
+.unlock {
+  margin-top: var(--s200); padding: var(--s400); border-radius: 24px; background: var(--surface);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: var(--s500);
+}
+.unlock h3 { font-size: 24px; line-height: 32px; }
+.unlock p { color: var(--muted); margin-top: var(--s100); }
+.unlock p a { color: var(--fg); text-underline-offset: 4px; }
+.unlock ol { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--s75); counter-reset: u; min-width: 0; }
+.unlock li {
+  display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: var(--s100);
+  padding: var(--s100); border-radius: 12px; background: var(--raised);
+  font-size: 14px; line-height: 20px; color: var(--muted);
+}
+.unlock li::before { counter-increment: u; content: counter(u); font: 600 12px/16px var(--mono); padding-top: var(--s25); color: var(--cool); }
+.unlock li code { color: var(--fg); font-size: 12px; line-height: 16px; }
+
+/* faq */
+.faq { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); gap: var(--s700); }
+.faq .h2 { font-size: 48px; }
+.qa { display: grid; gap: var(--s75); }
+details {
+  border-radius: 16px; background: var(--surface); border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: background-color var(--dur) var(--ease);
+}
+details[open] { background: var(--raised); }
+summary {
+  list-style: none; cursor: pointer; padding: var(--s200) var(--s300);
+  display: flex; justify-content: space-between; align-items: center; gap: var(--s200);
+  font-weight: 500; border-radius: 16px;
+}
+summary::-webkit-details-marker { display: none; }
+summary .plus { position: relative; width: 16px; height: 16px; flex: none; }
+summary .plus::before, summary .plus::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 7px; height: 2px; border-radius: 2px; background: var(--muted);
+  transition: transform var(--dur) var(--ease);
+}
+summary .plus::after { transform: rotate(90deg); }
+details[open] summary .plus::after { transform: rotate(0deg); }
+details .a { padding: 0 var(--s300) var(--s300); color: var(--muted); max-width: 640px; }
+details .a code { font-size: 14px; line-height: 20px; color: var(--fg); }
+summary:focus-visible { border-radius: 16px; }
+
+/* final cta */
+.final {
+  padding: var(--s800) var(--s400); border-radius: 24px; background: var(--surface);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  display: grid; justify-items: start; gap: var(--s300);
+}
+.final .h2 { color: var(--fg); }
+.assure { display: flex; flex-wrap: wrap; gap: var(--s100) var(--s300); list-style: none; margin: 0; padding: 0; }
+.assure li { display: inline-flex; align-items: center; gap: var(--s75); font-size: 14px; line-height: 20px; color: var(--muted); }
+.assure .i { color: var(--cool); }
+
+footer { padding-block: var(--s700) var(--s600); }
+.foot {
+  display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--s300);
+  padding-top: var(--s400); border-top: 1px solid var(--line);
+  font-size: 14px; line-height: 20px; color: var(--dim);
+}
+.foot nav { display: flex; flex-wrap: wrap; gap: var(--s300); }
+.foot a { text-decoration: none; transition: color var(--dur) var(--ease); }
+.foot a:hover { color: var(--fg); }
+.privacy { margin-top: var(--s300); max-width: 640px; font-size: 12px; line-height: 16px; color: var(--dim); }
+
+@media (max-width: 1199px) {
+  .hero { grid-template-columns: minmax(0, 1fr); padding-top: calc(var(--s900) + var(--s400)); }
+  .demo { justify-self: start; }
+}
+@media (max-width: 1023px) {
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .unlock, .faq { grid-template-columns: minmax(0, 1fr); gap: var(--s400); }
+  .tagline p { font-size: 48px; }
+}
+@media (max-width: 767px) {
+  .hero h1 { font-size: 48px; }
+  .hero h1 br, .h2 br, .tagline br { display: none; }
+  .h2, .faq .h2 { font-size: 36px; line-height: 40px; }
+  .tagline p { font-size: 36px; line-height: 40px; }
+  .versus, .grid, .steps { grid-template-columns: minmax(0, 1fr); }
+  .demo { justify-self: stretch; }
+  section, .tagline { padding-block: var(--s700); }
+  .panel, .unlock { padding: var(--s300); }
+  .final { padding: var(--s600) var(--s300); }
+}
+@media (max-width: 420px) {
+  .hero h1 { font-size: 36px; line-height: 40px; }
+  .stats { grid-template-columns: minmax(0, 1fr); }
+  .popover { padding: var(--s200); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0ms !important; transition-delay: 0ms !important; scroll-behavior: auto !important; }
+  .js [data-reveal]:not(.in) { opacity: 1; transform: none; filter: none; }
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-fan" viewBox="0 0 256 256"><path d="M233,135a60,60,0,0,0-89.62-35.45l16.39-65.44a8,8,0,0,0-3.45-8.68A60,60,0,1,0,95.69,128.91L30.82,147.44a8,8,0,0,0-5.8,7.32,60,60,0,0,0,44.42,60.66,60.52,60.52,0,0,0,15.62,2.07,60.07,60.07,0,0,0,59.88-62l48.480,46.92a8,8,0,0,0,9.25,1.35A60,60,0,0,0,233,135Zm-121-7a16,16,0,1,1,16,16A16,16,0,0,1,112,128ZM80,76a44,44,0,0,1,62.75-39.82L127.77,96A32,32,0,0,0,99.85,112.8,43.85,43.85,0,0,1,80,76Zm27,119.57a44,44,0,0,1-65.86-34.430l59.31-16.94A32,32,0,0,0,128,160l.91,0A43.82,43.82,0,0,1,107,195.57Zm106.17-23a43.92,43.920,0,0,1-13,14.14l-44.32-42.89a31.910,31.910,0,0,0-.59-32.57,44,44,0,0,1,57.91,61.32Z"/></symbol>
+  <symbol id="i-fan-fill" viewBox="0 0 256 256"><path d="M233,135a60,60,0,0,0-89.62-35.45l16.39-65.44a8,8,0,0,0-3.45-8.68A60,60,0,1,0,95.69,128.91L30.82,147.44a8,8,0,0,0-5.8,7.32,60,60,0,0,0,44.42,60.66,60.52,60.52,0,0,0,15.62,2.07,60.07,60.07,0,0,0,59.88-62l48.48,46.92a8,8,0,0,0,9.25,1.35A60,60,0,0,0,233,135ZM130.44,147.85a20,20,0,1,1,17.41-22.29A20,20,0,0,1,130.44,147.85Z"/></symbol>
+  <symbol id="i-github" viewBox="0 0 256 256"><path d="M208.31,75.68A59.78,59.78,0,0,0,202.93,28,8,8,0,0,0,196,24a59.75,59.75,0,0,0-48,24H124A59.75,59.75,0,0,0,76,24a8,8,0,0,0-6.930,4,59.78,59.78,0,0,0-5.38,47.68A58.14,58.14,0,0,0,56,104v8a56.06,56.06,0,0,0,48.44,55.47A39.8,39.8,0,0,0,96,192v8H72a24,24,0,0,1-24-24A40,40,0,0,0,8,136a8,8,0,0,0,0,16,24,24,0,0,1,24,24,40,40,0,0,0,40,40H96v16a8,8,0,0,0,16,0V192a24,24,0,0,1,48,0v40a8,8,0,0,0,16,0V192a39.8,39.8,0,0,0-8.44-24.53A56.06,56.06,0,0,0,216,112v-8A58.14,58.14,0,0,0,208.31,75.68ZM200,112a40,40,0,0,1-40,40H112a40,40,0,0,1-40-40v-8a41.74,41.74,0,0,1,6.9-22.48A8,8,0,0,0,80,73.83a43.81,43.81,0,0,1,.79-33.58,43.88,43.88,0,0,1,32.32,20.06A8,8,0,0,0,119.82,64h32.35a8,8,0,0,0,6.74-3.69,43.87,43.87,0,0,1,32.32-20.06A43.81,43.81,0,0,1,192,73.830a8.09,8.09,0,0,0,1,7.65A41.72,41.72,0,0,1,200,104Z"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 256 256"><path d="M221.66,133.66l-72,72a8,8,0,0,1-11.32-11.32L196.69,136H40a8,8,0,0,1,0-16H196.69L138.34,61.66a8,8,0,0,1,11.32-11.32l72,72A8,8,0,0,1,221.66,133.66Z"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 256 256"><path d="M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 256 256"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 256 256"><path d="M40,88H73a32,32,0,0,0,62,0h81a8,8,0,0,0,0-16H135a32,32,0,0,0-62,0H40a8,8,0,0,0,0,16Zm64-24A16,16,0,1,1,88,80,16,16,0,0,1,104,64ZM216,168H199a32,32,0,0,0-62,0H40a8,8,0,0,0,0,16h97a32,32,0,0,0,62,0h17a8,8,0,0,0,0-16Zm-48,24a16,16,0,1,1,16-16A16,16,0,0,1,168,192Z"/></symbol>
+  <symbol id="i-power" viewBox="0 0 256 256"><path d="M120,128V48a8,8,0,0,1,16,0v80a8,8,0,0,1-16,0Zm60.37-78.7a8,8,0,0,0-8.74,13.4C194.74,77.77,208,101.57,208,128a80,80,0,0,1-160,0c0-26.43,13.26-50.230,36.37-65.3a8,8,0,0,0-8.74-13.4C47.9,67.38,32,96.06,32,128a96,96,0,0,0,192,0C224,96.06,208.1,67.38,180.37,49.3Z"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 256 256"><path d="M240,96a8,8,0,0,1-8,8H216v16a8,8,0,0,1-16,0V104H184a8,8,0,0,1,0-16h16V72a8,8,0,0,1,16,0V88h16A8,8,0,0,1,240,96ZM144,56h8v8a8,8,0,0,0,16,0V56h8a8,8,0,0,0,0-16h-8V32a8,8,0,0,0-16,0v8h-8a8,8,0,0,0,0,16Zm72.77,97a8,8,0,0,1,1.43,8A96,96,0,1,1,95.07,37.8a8,8,0,0,1,10.6,9.06A88.07,88.07,0,0,0,209.14,150.33,8,8,0,0,1,216.77,153Zm-19.39,14.88c-1.79.09-3.59.14-5.38.14A104.11,104.11,0,0,1,88,64c0-1.79,0-3.59.14-5.38A80,80,0,1,0,197.38,167.86Z"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 256 256"><path d="M208,80H96V56a32,32,0,0,1,32-32c15.37,0,29.2,11,32.16,25.59a8,8,0,0,0,15.68-3.18C171.32,24.15,151.2,8,128,8A48.05,48.05,0,0,0,80,56V80H48A16,16,0,0,0,32,96V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V96A16,16,0,0,0,208,80Zm0,128H48V96H208V208Zm-68-56a12,12,0,1,1-12-12A12,12,0,0,1,140,152Z"/></symbol>
+  <symbol id="i-thermo" viewBox="0 0 256 256"><path d="M136,153V88a8,8,0,0,0-16,0v65a32,32,0,1,0,16,0Zm-8,47a16,16,0,1,1,16-16A16,16,0,0,1,128,200Zm40-66V48a40,40,0,0,0-80,0v86a64,64,0,1,0,80,0Zm-40,98a48,48,0,0,1-27.42-87.4A8,8,0,0,0,104,138V48a24,24,0,0,1,48,0v90a8,8,0,0,0,3.42,6.56A48,48,0,0,1,128,232Z"/></symbol>
+  <symbol id="i-term" viewBox="0 0 256 256"><path d="M128,128a8,8,0,0,1-3,6.25l-40,32a8,8,0,1,1-10-12.5L107.19,128,75,102.25a8,8,0,1,1,10-12.5l40,32A8,8,0,0,1,128,128Zm48,24H136a8,8,0,0,0,0,16h40a8,8,0,0,0,0-16Zm56-96V200a16,16,0,0,1-16,16H40a16,16,0,0,1-16-16V56A16,16,0,0,1,40,40H216A16,16,0,0,1,232,56ZM216,200V56H40V200H216Z"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 256 256"><path d="M208,40H48A16,16,0,0,0,32,56v56c0,52.72,25.52,84.67,46.93,102.19,23.06,18.86,46,25.26,47,25.53a8,8,0,0,0,4.2,0c1-.27,23.91-6.67,47-25.53C198.48,196.67,224,164.72,224,112V56A16,16,0,0,0,208,40Zm0,72c0,37.07-13.66,67.16-40.6,89.42A129.3,129.3,0,0,1,128,223.62a128.25,128.25,0,0,1-38.92-21.81C61.82,179.51,48,149.3,48,112l0-56,160,0ZM82.34,141.66a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32l-56,56a8,8,0,0,1-11.32,0Z"/></symbol>
+</svg>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav" id="nav">
+  <div class="pill">
+    <a class="brand" href="#top" aria-label="FanDial home"><svg class="i"><use href="#i-fan-fill"/></svg>FanDial</a>
+    <ul class="links">
+      <li><a href="#how">How it works</a></li>
+      <li><a href="#numbers">Numbers</a></li>
+      <li><a href="#faq">FAQ</a></li>
+    </ul>
+    <a class="btn btn-primary btn-small" href="https://github.com/whybepb/fan-dial" target="_blank" rel="noopener"><svg class="i"><use href="#i-github"/></svg>Get FanDial</a>
+    <button class="burger" id="burger" aria-label="Open menu" aria-expanded="false" aria-controls="sheet"><span></span><span></span></button>
+  </div>
+  <nav class="sheet" id="sheet" aria-label="Menu">
+    <a href="#why">Why a dial</a>
+    <a href="#how">How it works</a>
+    <a href="#numbers">Numbers</a>
+    <a href="#faq">FAQ</a>
+    <a class="btn btn-primary" href="https://github.com/whybepb/fan-dial" target="_blank" rel="noopener"><svg class="i"><use href="#i-github"/></svg>Get FanDial on GitHub</a>
+  </nav>
+</header>
+
+<main id="main" class="wrap">
+
+  <!-- 1. hero -->
+  <div class="hero" id="top">
+    <div class="hero-copy">
+      <h1 data-reveal>Set your Mac's fan speed<br> with one turn of a dial</h1>
+      <p class="sub" data-reveal>FanDial is a free menu bar app for Apple Silicon Macs. Drag the ring to pick a target RPM. Tap the center and macOS takes the fans back.</p>
+      <div class="cta-row" data-reveal>
+        <a class="btn btn-primary" href="https://github.com/whybepb/fan-dial" target="_blank" rel="noopener"><svg class="i"><use href="#i-github"/></svg>Get FanDial on GitHub</a>
+        <span class="cta-note">MIT licensed. Builds with one script.</span>
+      </div>
+      <p class="proof" data-reveal><span class="dot" aria-hidden="true"></span>Measured on an M4 Pro: a warm speed change lands in <b>0.15&nbsp;s</b></p>
+    </div>
+
+    <div class="demo manual" id="demo" data-reveal>
+      <div class="menubar" aria-hidden="true">
+        <span class="fanmark"><svg class="i line"><use href="#i-fan"/></svg><svg class="i fill"><use href="#i-fan-fill"/></svg></span>
+        <span class="mono">Sun 25 Oct 9:41</span>
+      </div>
+      <div class="popover">
+        <div class="dial" id="dial" role="slider" tabindex="0" aria-label="Target fan speed" aria-valuemin="2317" aria-valuemax="7826" aria-valuenow="6050" aria-valuetext="6050 rpm, manual">
+          <svg viewBox="0 0 224 224" aria-hidden="true">
+            <circle cx="112" cy="112" r="111" fill="#1F1F1F" stroke="rgba(255,255,255,0.06)"/>
+            <g id="ticks"></g>
+            <path id="marker" class="marker" d="M107.5 1.5 L116.5 6 L107.5 10.5 Z" fill="#33D66B"/>
+            <circle cx="112" cy="112" r="49.5" fill="none" stroke="rgba(255,255,255,0.09)"/>
+          </svg>
+          <button class="center" id="center" type="button" aria-label="Hand fans back to macOS">
+            <svg class="i"><use href="#i-fan-fill"/></svg>
+            <span class="rpm" id="rpm">6050</span>
+            <span class="cap" id="cap">RPM · manual</span>
+          </button>
+        </div>
+        <div class="readout" aria-live="off">
+          <span>L <b id="fl">6050</b></span>
+          <span>R <b id="fr">6020</b></span>
+          <span>CPU <b id="cpu">63°</b></span>
+          <span>GPU <b id="gpu">55°</b></span>
+        </div>
+        <div class="controls">
+          <button class="chip auto" id="auto" type="button" aria-pressed="false">Auto</button>
+          <button class="chip max" id="max" type="button">Max</button>
+          <span class="spacer"></span>
+          <button class="login" id="login" type="button" aria-pressed="true"><span class="led"></span>login</button>
+        </div>
+      </div>
+      <p class="demo-note">Interactive demo with simulated readings. Drag the ring, tap the center, or use the arrow keys. Nothing here touches your Mac.</p>
+    </div>
+  </div>
+
+  <!-- 2. problem to solution -->
+  <section id="why" aria-labelledby="why-h">
+    <div class="head" data-reveal>
+      <p class="eyebrow">Why a dial</p>
+      <h2 class="h2" id="why-h">macOS waits until<br> your chip is already hot</h2>
+      <p class="lede">The automatic fan curve is tuned to stay quiet. During a long build, a render, or a game on a warm afternoon, it lets the chip climb first and ramps later. FanDial lets you spin the fans up before the heavy work starts.</p>
+    </div>
+    <div class="versus">
+      <article class="panel" data-reveal>
+        <h3>The automatic curve</h3>
+        <svg class="curve" viewBox="0 0 320 120" role="img" aria-label="Sketch: fan speed rises only after temperature has climbed">
+          <line x1="16" y1="100" x2="304" y2="100" stroke="#313131"/>
+          <path d="M16 92 C 90 92, 140 88, 170 70 S 230 22, 304 18" fill="none" stroke="#FF544D" stroke-width="2"/>
+          <path d="M16 96 L 150 96 C 190 96, 210 60, 240 44 S 290 34, 304 34" fill="none" stroke="#9B9B9B" stroke-width="2" stroke-dasharray="4 4"/>
+          <text x="16" y="114">time</text>
+          <text x="236" y="14">chip temp</text>
+          <text x="246" y="56">fan rpm</text>
+        </svg>
+        <p>It reacts to heat that is already there. On a long job, the fans often catch up after the chip has started to throttle.</p>
+      </article>
+      <article class="panel" data-reveal>
+        <h3>The dial</h3>
+        <svg class="curve" viewBox="0 0 320 120" role="img" aria-label="Sketch: fan speed set high before the work starts keeps temperature flatter">
+          <line x1="16" y1="100" x2="304" y2="100" stroke="#313131"/>
+          <path d="M16 92 C 90 92, 140 84, 180 66 S 250 54, 304 52" fill="none" stroke="#FFB82E" stroke-width="2"/>
+          <path d="M16 96 L 60 96 C 70 96, 74 30, 90 30 L 304 30" fill="none" stroke="#33D66B" stroke-width="2"/>
+          <text x="16" y="114">time</text>
+          <text x="236" y="46">chip temp</text>
+          <text x="96" y="24">fan rpm, set by you</text>
+        </svg>
+        <p>You choose the RPM before the job begins. When you are done, one tap returns the fans to the automatic curve.</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- 3. tagline reveal (B11) -->
+  <div class="tagline" id="tagline">
+    <p>Turn the ring<br> and the <span data-accent>fans follow.</span><br> Tap the center<br> and macOS takes over.</p>
+  </div>
+
+  <!-- 4. benefits -->
+  <section id="benefits" aria-labelledby="ben-h">
+    <div class="head" data-reveal>
+      <p class="eyebrow">In the menu bar</p>
+      <h2 class="h2" id="ben-h">Everything you need,<br> nothing that fights macOS</h2>
+    </div>
+    <div class="grid">
+      <article class="card" data-reveal>
+        <span class="ico"><svg class="i"><use href="#i-sliders"/></svg></span>
+        <h3>Set it in one drag</h3>
+        <p>The target applies when you let go. It stays inside the range the SMC reports, 2317 to 7826 rpm on an M4 Pro.</p>
+      </article>
+      <article class="card" data-reveal>
+        <span class="ico"><svg class="i"><use href="#i-power"/></svg></span>
+        <h3>Auto is one tap away</h3>
+        <p>Tap the center or the Auto pill. Quit FanDial and the fans go back to macOS without you doing anything.</p>
+      </article>
+      <article class="card" data-reveal>
+        <span class="ico"><svg class="i"><use href="#i-moon"/></svg></span>
+        <h3>Your setting survives sleep</h3>
+        <p>Wake resets the firmware unlock. With the helper installed, FanDial notices and applies your RPM again.</p>
+      </article>
+      <article class="card" data-reveal>
+        <span class="ico"><svg class="i"><use href="#i-lock"/></svg></span>
+        <h3>One password prompt, then none</h3>
+        <p>Install the optional helper once and later changes apply silently. Skip it and macOS asks on each change.</p>
+      </article>
+      <article class="card" data-reveal>
+        <span class="ico"><svg class="i"><use href="#i-thermo"/></svg></span>
+        <h3>Temperatures under the dial</h3>
+        <p>CPU and GPU die sensors, averaged, so you can see what the fans are doing for you.</p>
+      </article>
+      <article class="card" data-reveal>
+        <span class="ico"><svg class="i"><use href="#i-term"/></svg></span>
+        <h3>A CLI if you prefer the terminal</h3>
+        <p><code>fanctl</code> reads fans and temps with no root, and sets them with it.</p>
+        <div class="term"><span class="p">$</span> ./fanctl status
+<span class="p">$</span> sudo ./fanctl set 4000
+<span class="p">$</span> sudo ./fanctl auto</div>
+      </article>
+    </div>
+  </section>
+
+  <!-- 5. how it works -->
+  <section id="how" aria-labelledby="how-h">
+    <div class="head" data-reveal>
+      <p class="eyebrow">How it works</p>
+      <h2 class="h2" id="how-h">From clone to cool<br> in three steps</h2>
+    </div>
+    <ol class="steps">
+      <li class="step" data-reveal>
+        <span class="n">1</span>
+        <h3>Build it</h3>
+        <p>No Xcode project. The script needs the Swift compiler from Xcode or the Command Line Tools, and macOS 14 or later.</p>
+        <div class="cmd"><code id="cmd1">git clone https://github.com/whybepb/fan-dial
+cd fan-dial &amp;&amp; ./build.sh
+open FanDial.app</code><button class="copy" type="button" data-copy="cmd1" aria-label="Copy build commands"><svg class="i cp"><use href="#i-copy"/></svg><svg class="i ok"><use href="#i-check"/></svg></button></div>
+        <p class="copy-err" id="cmd1-err" role="status"></p>
+      </li>
+      <li class="step" data-reveal>
+        <span class="n">2</span>
+        <h3>Drag the ring</h3>
+        <p>A fan icon appears in the menu bar. Click it and drag the ring. The first change takes a few seconds while FanDial unlocks the fan keys. The icon fills while you are in manual.</p>
+      </li>
+      <li class="step" data-reveal>
+        <span class="n">3</span>
+        <h3>Tap to hand back</h3>
+        <p>Tap the center or press Auto. macOS takes over its normal curve in about 10 ms. Press Max when you want everything the fans have.</p>
+      </li>
+    </ol>
+  </section>
+
+  <!-- 6. proof -->
+  <section id="numbers" aria-labelledby="num-h">
+    <div class="head" data-reveal>
+      <p class="eyebrow">Numbers</p>
+      <h2 class="h2" id="num-h">Measured on a real<br> MacBook Pro M4 Pro</h2>
+      <p class="lede">These are timings from the machine FanDial was built on. Your Mac may differ, and heavy thermal load can slow the first change.</p>
+    </div>
+    <div class="stats">
+      <div class="stat" data-reveal>
+        <span class="v">1–4<small> s</small></span>
+        <span class="k">First manual change, while the firmware yields</span>
+      </div>
+      <div class="stat" data-reveal>
+        <span class="v">0.15<small> s</small></span>
+        <span class="k">Every change after that</span>
+      </div>
+      <div class="stat" data-reveal>
+        <span class="v">10<small> ms</small></span>
+        <span class="k">Back to the automatic curve</span>
+      </div>
+      <div class="stat" data-reveal>
+        <span class="v">2317<small>–7826</small></span>
+        <span class="k">RPM range the SMC reports on this machine</span>
+        <span class="bar" aria-hidden="true"><span style="margin-left:29.6%;width:70.4%"></span></span>
+      </div>
+    </div>
+    <div class="unlock" data-reveal>
+      <div>
+        <h3>How it gets past thermalmonitord</h3>
+        <p>From the M3 generation on, macOS holds the fan keys and the firmware rejects writes with SMC result <code>0x82</code>. FanDial uses the unlock documented by <a href="https://github.com/agoodkind/macos-smc-fan" target="_blank" rel="noopener">agoodkind/macos-smc-fan</a> and implemented in <a href="https://github.com/raminsharifi/MacFanControl" target="_blank" rel="noopener">raminsharifi/MacFanControl</a>. On M5 the mode key is lowercase with no gate, and FanDial handles both.</p>
+      </div>
+      <ol>
+        <li><span>Try <code>F0Md = 1</code>. On <code>0x82</code>, write the diagnostic flag <code>Ftst = 1</code> and wait about 3 s.</span></li>
+        <li><span>Retry the mode write every 100 ms. It yields in about 3 to 6 s, longer under load.</span></li>
+        <li><span>Write the target to <code>F0Tg</code>. Keep <code>Ftst = 1</code> while manual.</span></li>
+        <li><span>To release, set <code>F0Md = 0</code> per fan, then <code>Ftst = 0</code>, so thermalmonitord can reclaim the fans.</span></li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- 7. faq -->
+  <section id="faq" aria-labelledby="faq-h">
+    <div class="faq">
+      <div data-reveal>
+        <p class="eyebrow">FAQ</p>
+        <h2 class="h2" id="faq-h">Questions before you build</h2>
+      </div>
+      <div class="qa">
+        <details data-reveal><summary>Which Macs does it work on?<span class="plus" aria-hidden="true"></span></summary>
+          <p class="a">FanDial is built for Apple Silicon and tested on a MacBook Pro with an M4 Pro. It handles the M3 and M4 unlock and the lowercase mode key on M5. It needs macOS 14 or later. It has not been tested on Intel Macs.</p></details>
+        <details data-reveal><summary>Is it safe for my Mac?<span class="plus" aria-hidden="true"></span></summary>
+          <p class="a">Targets are clamped to the minimum and maximum your Mac's SMC reports, so the dial cannot ask for a speed the firmware does not allow. Its floor is the SMC minimum, not zero. Setting fans low under heavy load makes the chip throttle sooner. FanDial writes through a diagnostic firmware path, so you use it at your own risk.</p></details>
+        <details data-reveal><summary>Why does the first change take a few seconds?<span class="plus" aria-hidden="true"></span></summary>
+          <p class="a">On M3 and later, thermalmonitord holds the fan keys. FanDial sets a diagnostic flag and retries until the firmware yields. On the M4 Pro that takes 1 to 4 s. After that, changes take about 0.15 s.</p></details>
+        <details data-reveal><summary>Why does it ask for my password?<span class="plus" aria-hidden="true"></span></summary>
+          <p class="a">Reading fan speeds needs no privileges. Writing a target needs root, so macOS shows its own admin dialog. FanDial never sees your password or your Touch ID.</p></details>
+        <details data-reveal><summary>Can I stop the password prompts?<span class="plus" aria-hidden="true"></span></summary>
+          <p class="a">Yes. Click "Stop asking for my password" in the popover and approve once. That installs <code>fanctl</code> as a setuid helper that only accepts status, set, max and auto. Remove it any time with <code>sudo rm /usr/local/bin/fanctl</code>.</p></details>
+        <details data-reveal><summary>Can I run it next to Macs Fan Control?<span class="plus" aria-hidden="true"></span></summary>
+          <p class="a">No. Two apps writing the same fan target give confusing results. Quit one of them before you use the other.</p></details>
+        <details data-reveal><summary>What happens when my Mac sleeps?<span class="plus" aria-hidden="true"></span></summary>
+          <p class="a">Wake resets the unlock flag. With the helper installed, FanDial applies your RPM again. If macOS keeps reclaiming the fans, FanDial backs off and returns to auto.</p></details>
+        <details data-reveal><summary>What happens when I quit?<span class="plus" aria-hidden="true"></span></summary>
+          <p class="a">FanDial hands the fans back to macOS automatically. You do not need to press Auto first.</p></details>
+        <details data-reveal><summary>Is there a ready made download?<span class="plus" aria-hidden="true"></span></summary>
+          <p class="a">Not yet. You build it from source with <code>./build.sh</code>, which takes one command and produces <code>FanDial.app</code> and <code>fanctl</code>.</p></details>
+        <details data-reveal><summary>What does it cost?<span class="plus" aria-hidden="true"></span></summary>
+          <p class="a">Nothing. FanDial is MIT licensed. Read the code, fork it, change it.</p></details>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8. risk reversal + final cta -->
+  <section aria-labelledby="final-h">
+    <div class="final" data-reveal>
+      <h2 class="h2" id="final-h">Set your Mac's fan speed<br> with one turn of a dial</h2>
+      <ul class="assure">
+        <li><svg class="i"><use href="#i-check"/></svg>Free and MIT licensed</li>
+        <li><svg class="i"><use href="#i-check"/></svg>Auto is one tap away</li>
+        <li><svg class="i"><use href="#i-check"/></svg>Quit and macOS takes the fans back</li>
+      </ul>
+      <a class="btn btn-primary" href="https://github.com/whybepb/fan-dial" target="_blank" rel="noopener"><svg class="i"><use href="#i-github"/></svg>Get FanDial on GitHub</a>
+    </div>
+  </section>
+</main>
+
+<footer class="wrap">
+  <div class="foot">
+    <span>FanDial by <a href="https://whybepb.site" target="_blank" rel="noopener">Prathmesh Bhardwaj</a></span>
+    <nav aria-label="Footer">
+      <a href="https://github.com/whybepb/fan-dial" target="_blank" rel="noopener">Source</a>
+      <a href="https://github.com/whybepb/fan-dial/blob/main/LICENSE" target="_blank" rel="noopener">License and terms</a>
+      <a href="#privacy">Privacy</a>
+    </nav>
+  </div>
+  <p class="privacy" id="privacy">Privacy: FanDial makes no network requests and collects no data. It stores only your launch at login choice, through macOS. This page sets no cookies.</p>
+</footer>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  root.classList.add("js");
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ---------- scroll interpolation ---------- */
+  var reveal = document.querySelectorAll("[data-reveal]");
+  if ("IntersectionObserver" in window && !reduce) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
+      });
+    }, { rootMargin: "0px 0px -8% 0px" });
+    reveal.forEach(function (el) { io.observe(el); });
+  } else {
+    reveal.forEach(function (el) { el.classList.add("in"); });
+  }
+
+  /* ---------- nav: hamburger + current section ---------- */
+  var nav = document.getElementById("nav");
+  var burger = document.getElementById("burger");
+  function setMenu(open) {
+    nav.classList.toggle("menu-open", open);
+    burger.setAttribute("aria-expanded", String(open));
+    burger.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+    document.body.style.overflow = open ? "hidden" : "";
+  }
+  burger.addEventListener("click", function () { setMenu(!nav.classList.contains("menu-open")); });
+  document.querySelectorAll("#sheet a").forEach(function (a) { a.addEventListener("click", function () { setMenu(false); }); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") setMenu(false); });
+
+  var navLinks = document.querySelectorAll(".links a, #sheet a[href^='#']");
+  if ("IntersectionObserver" in window) {
+    var spy = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        navLinks.forEach(function (a) { a.setAttribute("aria-current", String(a.getAttribute("href") === "#" + e.target.id)); });
+      });
+    }, { rootMargin: "-45% 0px -50% 0px" });
+    ["top", "why", "benefits", "how", "numbers", "faq"].forEach(function (id) { var s = document.getElementById(id); if (s) spy.observe(s); });
+  }
+
+  /* ---------- tagline: words light up one at a time ---------- */
+  var tag = document.getElementById("tagline");
+  var p = tag.querySelector("p");
+  (function split(node) {
+    Array.prototype.slice.call(node.childNodes).forEach(function (child) {
+      if (child.nodeType === 3) {
+        var frag = document.createDocumentFragment();
+        child.textContent.split(/(\s+)/).forEach(function (part) {
+          if (!part) return;
+          if (/^\s+$/.test(part)) { frag.appendChild(document.createTextNode(part)); return; }
+          var s = document.createElement("span");
+          s.className = "w" + (node.hasAttribute && node.hasAttribute("data-accent") ? " accent" : "");
+          s.textContent = part;
+          frag.appendChild(s);
+        });
+        node.replaceChild(frag, child);
+      } else if (child.nodeType === 1 && child.tagName !== "BR") {
+        split(child);
+      }
+    });
+  })(p);
+  var words = p.querySelectorAll(".w");
+  var ticking = false;
+  function paintWords() {
+    ticking = false;
+    var r = tag.getBoundingClientRect(), vh = window.innerHeight;
+    var prog = (vh * 0.85 - r.top) / (vh * 0.55);
+    var n = Math.round(Math.max(0, Math.min(1, prog)) * words.length);
+    for (var i = 0; i < words.length; i++) words[i].classList.toggle("on", i < n);
+  }
+  window.addEventListener("scroll", function () {
+    if (!ticking) { ticking = true; requestAnimationFrame(paintWords); }
+  }, { passive: true });
+  window.addEventListener("resize", paintWords);
+  paintWords();
+
+  /* ---------- copy buttons ---------- */
+  document.querySelectorAll("[data-copy]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var id = btn.getAttribute("data-copy");
+      var code = document.getElementById(id), err = document.getElementById(id + "-err");
+      function fallback() {
+        var range = document.createRange(); range.selectNodeContents(code);
+        var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+        err.textContent = "Your browser blocked copying. The commands are selected, press Cmd C.";
+      }
+      try {
+        navigator.clipboard.writeText(code.textContent).then(function () {
+          err.textContent = "";
+          btn.classList.add("done"); btn.setAttribute("aria-label", "Copied");
+          setTimeout(function () { btn.classList.remove("done"); btn.setAttribute("aria-label", "Copy build commands"); }, 1600);
+        }, fallback);
+      } catch (e) { fallback(); }
+    });
+  });
+
+  /* ---------- the dial (mirrors DialView.swift) ---------- */
+  var MIN = 2317, MAX = 7826, TICKS = 28, AUTO_RPM = 2484;
+  var COOL = "#33D66B", WARM = "#FFB82E", HOT = "#FF544D", OFF = "#454545";
+  var demo = document.getElementById("demo");
+  var dial = document.getElementById("dial");
+  var tickG = document.getElementById("ticks");
+  var marker = document.getElementById("marker");
+  var rpmEl = document.getElementById("rpm"), capEl = document.getElementById("cap");
+  var flEl = document.getElementById("fl"), frEl = document.getElementById("fr");
+  var cpuEl = document.getElementById("cpu"), gpuEl = document.getElementById("gpu");
+  var autoBtn = document.getElementById("auto"), maxBtn = document.getElementById("max");
+  var loginBtn = document.getElementById("login"), centerBtn = document.getElementById("center");
+  var SVGNS = "http://www.w3.org/2000/svg";
+
+  var ticks = [];
+  for (var i = 0; i < TICKS; i++) {
+    var t = document.createElementNS(SVGNS, "rect");
+    t.setAttribute("x", "109.5"); t.setAttribute("y", "16.5");
+    t.setAttribute("width", "5"); t.setAttribute("height", "19"); t.setAttribute("rx", "2.5");
+    t.setAttribute("transform", "rotate(" + (i / TICKS * 360) + " 112 112)");
+    t.setAttribute("class", "tick");
+    tickG.appendChild(t); ticks.push(t);
+  }
+
+  var state = { manual: true, target: 6050, actual: 6050, drag: null, applying: false, mode: "idle" };
+  function frac(rpm) { return (rpm - MIN) / (MAX - MIN); }
+  function rpmFor(f) { return Math.round(MIN + f * (MAX - MIN)); }
+  function ramp(pos) { return pos < 0.60 ? COOL : pos < 0.85 ? WARM : HOT; }
+
+  var shown = frac(state.target); // fraction currently drawn, eased toward the goal
+  function goalFraction() {
+    if (state.drag !== null) return state.drag;
+    return state.manual || state.applying ? frac(state.target) : frac(state.actual);
+  }
+
+  function draw(f) {
+    var dim = !state.manual && !state.applying && state.drag === null;
+    var filled = Math.round(f * TICKS);
+    for (var i = 0; i < TICKS; i++) {
+      var on = i < filled;
+      ticks[i].setAttribute("fill", on ? ramp((i + 0.5) / TICKS) : OFF);
+      ticks[i].style.opacity = on && dim ? 0.45 : 1;
+    }
+    marker.setAttribute("transform", "rotate(" + (f * 360) + " 112 112)");
+    marker.setAttribute("fill", dim ? "#808080" : ramp(f));
+    marker.style.opacity = f > 0.01 ? 1 : 0;
+  }
+
+  function caption() {
+    if (state.mode === "ring") return "Set RPM";
+    if (state.applying) return "Applying…";
+    return state.manual ? "RPM · manual" : "RPM · auto";
+  }
+
+  function render() {
+    var display = state.drag !== null ? rpmFor(state.drag) : (state.manual || state.applying) ? state.target : Math.round(state.actual);
+    rpmEl.textContent = display;
+    capEl.textContent = caption();
+    var a = Math.round(state.actual);
+    flEl.textContent = a;
+    frEl.textContent = Math.max(MIN, a - 30);
+    var af = frac(state.actual);
+    var cpu = Math.round(78 - 17 * af), gpu = Math.round(66 - 12 * af);
+    cpuEl.textContent = cpu + "°"; cpuEl.classList.toggle("hot", cpu >= 85);
+    gpuEl.textContent = gpu + "°";
+    demo.classList.toggle("manual", state.manual);
+    autoBtn.setAttribute("aria-pressed", String(!state.manual));
+    centerBtn.setAttribute("aria-label", state.manual ? "Hand fans back to macOS" : "Fans are on the automatic curve");
+    var now = state.drag !== null ? rpmFor(state.drag) : (state.manual ? state.target : Math.round(state.actual));
+    dial.setAttribute("aria-valuenow", String(now));
+    dial.setAttribute("aria-valuetext", now + " rpm, " + (state.manual ? "manual" : "automatic"));
+  }
+
+  // one animation loop: eases the drawn fraction and the simulated fan speed
+  var last = performance.now();
+  function loop(now) {
+    var dt = Math.min(64, now - last); last = now;
+    var goal = goalFraction();
+    shown += (goal - shown) * (reduce ? 1 : 1 - Math.pow(0.001, dt / 150));
+    if (Math.abs(goal - shown) < 0.0005) shown = goal;
+    var want = state.applying ? state.actual : state.manual ? state.target : AUTO_RPM;
+    state.actual += (want - state.actual) * (1 - Math.pow(0.02, dt / 1000));
+    draw(shown); render();
+    requestAnimationFrame(loop);
+  }
+
+  var applyTimer = null;
+  function commit(f) {
+    var target = rpmFor(Math.max(0, Math.min(1, f)));
+    var cold = !state.manual;          // engaging manual from auto pays the unlock
+    state.target = target; state.applying = true;
+    clearTimeout(applyTimer);
+    applyTimer = setTimeout(function () { state.applying = false; state.manual = true; }, cold ? 2400 : 150);
+  }
+  function setAuto() {
+    clearTimeout(applyTimer);
+    state.applying = false; state.manual = false;
+  }
+
+  function fractionAt(x, y) {
+    var r = dial.getBoundingClientRect();
+    var a = Math.atan2(x - (r.left + r.width / 2), -(y - (r.top + r.height / 2)));
+    if (a < 0) a += 2 * Math.PI;
+    return a / (2 * Math.PI);
+  }
+  function noWrap(f, prev) {
+    if (prev === null) return f;
+    if (Math.abs(f - prev) > 0.5) return prev > 0.5 ? 1 : 0;
+    return f;
+  }
+
+  var start = null, keyTimer = null;
+  dial.addEventListener("pointerdown", function (e) {
+    var r = dial.getBoundingClientRect();
+    var unit = r.width / 224;
+    var d = Math.hypot(e.clientX - (r.left + r.width / 2), e.clientY - (r.top + r.height / 2)) / unit;
+    start = { x: e.clientX, y: e.clientY };
+    clearTimeout(keyTimer);
+    if (d < 49.5) { state.mode = "centerTap"; return; }
+    if (d <= 122) {
+      e.preventDefault();
+      state.mode = "ring";
+      dial.classList.add("dragging");
+      dial.setPointerCapture(e.pointerId);
+      state.drag = fractionAt(e.clientX, e.clientY);
+    }
+  });
+  dial.addEventListener("pointermove", function (e) {
+    if (state.mode !== "ring") return;
+    state.drag = noWrap(fractionAt(e.clientX, e.clientY), state.drag);
+  });
+  function endDrag() {
+    if (state.mode === "ring" && state.drag !== null) { commit(state.drag); state.drag = null; }
+    dial.classList.remove("dragging");
+    if (state.mode !== "centerTap") state.mode = "idle";
+  }
+  dial.addEventListener("pointerup", endDrag);
+  dial.addEventListener("pointercancel", endDrag);
+
+  centerBtn.addEventListener("click", function (e) {
+    var moved = start && e.detail > 0 ? Math.hypot(e.clientX - start.x, e.clientY - start.y) : 0;
+    state.mode = "idle";
+    if (moved >= 8) return;
+    if (state.manual) setAuto();   // like the app: tapping while on auto does nothing
+  });
+
+  dial.addEventListener("keydown", function (e) {
+    if (state.mode === "ring") return;
+    var step = 1 / TICKS, f = state.drag !== null ? state.drag : goalFraction();
+    if (e.key === "ArrowRight" || e.key === "ArrowUp") f += step;
+    else if (e.key === "ArrowLeft" || e.key === "ArrowDown") f -= step;
+    else if (e.key === "Home") f = 0;
+    else if (e.key === "End") f = 1;
+    else return;
+    e.preventDefault();
+    state.drag = Math.max(0, Math.min(1, f));
+    clearTimeout(keyTimer);
+    keyTimer = setTimeout(function () {
+      if (state.drag === null) return;
+      commit(state.drag); state.drag = null;
+    }, 450);
+  });
+
+  autoBtn.addEventListener("click", setAuto);
+  maxBtn.addEventListener("click", function () { commit(1); });
+  loginBtn.addEventListener("click", function () {
+    loginBtn.setAttribute("aria-pressed", String(loginBtn.getAttribute("aria-pressed") !== "true"));
+  });
+
+  // opening sweep: the ring fills to the starting target once
+  if (!reduce) shown = 0;
+  draw(shown); render();
+  requestAnimationFrame(function (t) { last = t; loop(t); });
+})();
+</script>
+</body>
+</html>

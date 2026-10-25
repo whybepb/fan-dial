@@ -4,6 +4,8 @@ A macOS menu bar app that controls your Mac's fans with a rotary dial —
 rotate the ring, the ticks fill up, the fans spin faster. Built for
 Apple Silicon (tested on a MacBook Pro M4 Pro), talks straight to the SMC.
 
+**Site:** [whybepb.site/fan-dial](https://whybepb.site/fan-dial/) — try the dial in your browser.
+
 > **Use at your own risk.** This forces fan speeds through a diagnostic
 > firmware path and requires root for writes. Targets are clamped to the
 > SMC's own min–max envelope and auto mode is always one click away, but
